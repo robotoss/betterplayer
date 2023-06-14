@@ -247,7 +247,7 @@ class _BetterPlayerState extends State<BetterPlayer>
       Wakelock.enable();
     }
 
-    await Navigator.of(context, rootNavigator: true).push(route);
+    await Navigator.of(context, rootNavigator: _betterPlayerConfiguration.useRootNavigator).push(route);
     _isFullScreen = false;
     widget.controller.exitFullScreen();
 
