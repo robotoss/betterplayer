@@ -18,47 +18,61 @@ import com.jhomlala.better_player.DataSourceUtils.getDataSourceFactory
 import io.flutter.plugin.common.EventChannel
 import io.flutter.view.TextureRegistry.SurfaceTextureEntry
 import io.flutter.plugin.common.MethodChannel
-import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
-import com.google.android.exoplayer2.ui.PlayerNotificationManager
-import android.support.v4.media.session.MediaSessionCompat
-import com.google.android.exoplayer2.drm.DrmSessionManager
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+//import androidx.media3.exoplayer.ui.PlayerNotificationManager
+//import android.support.v4.media.session.MediaSessionCompat
+import androidx.media3.exoplayer.drm.DrmSessionManager
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
-import com.google.android.exoplayer2.drm.HttpMediaDrmCallback
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
-import com.google.android.exoplayer2.drm.DefaultDrmSessionManager
-import com.google.android.exoplayer2.drm.FrameworkMediaDrm
-import com.google.android.exoplayer2.drm.UnsupportedDrmException
-import com.google.android.exoplayer2.drm.DummyExoMediaDrm
-import com.google.android.exoplayer2.drm.LocalMediaDrmCallback
-import com.google.android.exoplayer2.source.MediaSource
-import com.google.android.exoplayer2.source.ClippingMediaSource
-import com.google.android.exoplayer2.ui.PlayerNotificationManager.MediaDescriptionAdapter
-import com.google.android.exoplayer2.ui.PlayerNotificationManager.BitmapCallback
+import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
+//import androidx.media3.exoplayer.upstream.DefaultHttpDataSource
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.UnsupportedDrmException
+import androidx.media3.exoplayer.drm.DummyExoMediaDrm
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ClippingMediaSource
+//import androidx.media3.exoplayer.ui.PlayerNotificationManager.MediaDescriptionAdapter
+//import androidx.media3.exoplayer.ui.PlayerNotificationManager.BitmapCallback
 import androidx.work.OneTimeWorkRequest
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import android.view.Surface
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.Observer
-import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource
-import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource
-import com.google.android.exoplayer2.source.dash.DashMediaSource
-import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource
-import com.google.android.exoplayer2.source.hls.HlsMediaSource
-import com.google.android.exoplayer2.source.ProgressiveMediaSource
-import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.Util
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
+//import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
+//import androidx.media3.exoplayer.source.dash.DashMediaSource
+//import androidx.media3.exoplayer.source.dash.DefaultDashChunkSource
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+//import androidx.media3.exoplayer.extractor.DefaultExtractorsFactory
 import io.flutter.plugin.common.EventChannel.EventSink
 import androidx.work.Data
-import com.google.android.exoplayer2.*
-import com.google.android.exoplayer2.audio.AudioAttributes
-import com.google.android.exoplayer2.drm.DrmSessionManagerProvider
-import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector
-import com.google.android.exoplayer2.trackselection.TrackSelectionOverride
-import com.google.android.exoplayer2.upstream.DataSource
-import com.google.android.exoplayer2.upstream.DefaultDataSource
-import com.google.android.exoplayer2.util.Util
+import androidx.media3.exoplayer.*
+import androidx.media3.exoplayer.dash.DashMediaSource
+import androidx.media3.exoplayer.dash.DefaultDashChunkSource
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Timeline
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
+import androidx.media3.ui.PlayerNotificationManager
+import androidx.media3.session.MediaSession
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import java.io.File
 import java.lang.Exception
 import java.lang.IllegalStateException
@@ -206,7 +220,8 @@ internal class BetterPlayer(
         imageUrl: String?, notificationChannelName: String?,
         activityName: String
     ) {
-        val mediaDescriptionAdapter: MediaDescriptionAdapter = object : MediaDescriptionAdapter {
+        val mediaDescriptionAdapter: PlayerNotificationManager.MediaDescriptionAdapter = object :
+            PlayerNotificationManager.MediaDescriptionAdapter {
             override fun getCurrentContentTitle(player: Player): String {
                 return title
             }
@@ -235,7 +250,7 @@ internal class BetterPlayer(
 
             override fun getCurrentLargeIcon(
                 player: Player,
-                callback: BitmapCallback
+                callback: PlayerNotificationManager.BitmapCallback
             ): Bitmap? {
                 if (imageUrl == null) {
                     return null
@@ -638,8 +653,14 @@ internal class BetterPlayer(
                 }
             })
             mediaSession.isActive = true
-            val mediaSessionConnector = MediaSessionConnector(mediaSession)
-            mediaSessionConnector.setPlayer(exoPlayer)
+            // TODO(Konstantin): Work or not?
+            // https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide#MediaSessionConnector
+            if (exoPlayer != null) {
+                val mediaSessionConnector = MediaSession.Builder(context, exoPlayer)
+//                    .setSessionCallback(PlaybackService())
+                    .build()
+                mediaSessionConnector.setPlayer(exoPlayer)
+            }
             this.mediaSession = mediaSession
             return mediaSession
         }
