@@ -38,7 +38,7 @@ import androidx.media3.exoplayer.source.ClippingMediaSource
 import androidx.work.OneTimeWorkRequest
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
+//import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import android.view.Surface
 import androidx.annotation.RequiresApi
@@ -99,7 +99,7 @@ internal class BetterPlayer(
     private var refreshRunnable: Runnable? = null
     private var exoPlayerEventListener: Player.Listener? = null
     private var bitmap: Bitmap? = null
-    private var mediaSession: MediaSessionCompat? = null
+    private var mediaSession: MediaSession? = null
     private var drmSessionManager: DrmSessionManager? = null
     private val workManager: WorkManager
     private val workerObserverMap: HashMap<UUID, Observer<WorkInfo?>>
@@ -334,37 +334,37 @@ internal class BetterPlayer(
             }
 
             setupMediaSession(context)?.let {
-                setMediaSessionToken(it.sessionToken)
+                setMediaSessionToken(it.sessionCompatToken)
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            refreshHandler = Handler(Looper.getMainLooper())
-            refreshRunnable = Runnable {
-                val playbackState: PlaybackStateCompat = if (exoPlayer?.isPlaying == true) {
-                    PlaybackStateCompat.Builder()
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
-                        .setState(PlaybackStateCompat.STATE_PLAYING, position, 1.0f)
-                        .build()
-                } else {
-                    PlaybackStateCompat.Builder()
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
-                        .setState(PlaybackStateCompat.STATE_PAUSED, position, 1.0f)
-                        .build()
-                }
-                mediaSession?.setPlaybackState(playbackState)
-                refreshHandler?.postDelayed(refreshRunnable!!, 1000)
-            }
-            refreshHandler?.postDelayed(refreshRunnable!!, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+//            refreshHandler = Handler(Looper.getMainLooper())
+//            refreshRunnable = Runnable {
+//                val playbackState: PlaybackStateCompat = if (exoPlayer?.isPlaying == true) {
+//                    PlaybackStateCompat.Builder()
+//                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+//                        .setState(PlaybackStateCompat.STATE_PLAYING, position, 1.0f)
+//                        .build()
+//                } else {
+//                    PlaybackStateCompat.Builder()
+//                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+//                        .setState(PlaybackStateCompat.STATE_PAUSED, position, 1.0f)
+//                        .build()
+//                }
+//                mediaSession?.setPlaybackState(playbackState)
+//                refreshHandler?.postDelayed(refreshRunnable!!, 1000)
+//            }
+//            refreshHandler?.postDelayed(refreshRunnable!!, 0)
         }
         exoPlayerEventListener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                mediaSession?.setMetadata(
-                    MediaMetadataCompat.Builder()
-                        .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, getDuration())
-                        .build()
-                )
-            }
+//            override fun onPlaybackStateChanged(playbackState: Int) {
+//                mediaSession?.km(
+//                    MediaMetadataCompat.Builder()
+//                        .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, getDuration())
+//                        .build()
+//                )
+//            }
         }
         exoPlayerEventListener?.let { exoPlayerEventListener ->
             exoPlayer?.addListener(exoPlayerEventListener)
@@ -400,7 +400,10 @@ internal class BetterPlayer(
             if (lastPathSegment == null) {
                 lastPathSegment = ""
             }
-            type = Util.inferContentTypeForExtension(lastPathSegment)
+            println("DEBUG_PRINT: lastPathSegment $lastPathSegment")
+            val extension: String = lastPathSegment.substring(lastPathSegment.lastIndexOf(".") +1)
+            println("DEBUG_PRINT: extension $extension")
+            type = Util.inferContentTypeForExtension(extension)
         } else {
             type = when (formatHint) {
                 FORMAT_SS -> C.CONTENT_TYPE_SS
@@ -420,8 +423,10 @@ internal class BetterPlayer(
         drmSessionManager?.let { drmSessionManager ->
             drmSessionManagerProvider = DrmSessionManagerProvider { drmSessionManager }
         }
-
+        println("DEBUG_PRINT: type $type")
         return when (type) {
+
+
             C.CONTENT_TYPE_SS -> SsMediaSource.Factory(
                 DefaultSsChunkSource.Factory(mediaDataSourceFactory),
                 DefaultDataSource.Factory(context, mediaDataSourceFactory)
@@ -635,37 +640,50 @@ internal class BetterPlayer(
      * @return - configured MediaSession instance
      */
     @SuppressLint("InlinedApi")
-    fun setupMediaSession(context: Context?): MediaSessionCompat? {
+    fun setupMediaSession(context: Context?): MediaSession? {
+
         mediaSession?.release()
         context?.let {
-
             val mediaButtonIntent = Intent(Intent.ACTION_MEDIA_BUTTON)
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
                 0, mediaButtonIntent,
                 PendingIntent.FLAG_IMMUTABLE
             )
-            val mediaSession = MediaSessionCompat(context, TAG, null, pendingIntent)
-            mediaSession.setCallback(object : MediaSessionCompat.Callback() {
-                override fun onSeekTo(pos: Long) {
-                    sendSeekToEvent(pos)
-                    super.onSeekTo(pos)
-                }
-            })
-            mediaSession.isActive = true
+
             // TODO(Konstantin): Work or not?
             // https://developer.android.com/guide/topics/media/media3/getting-started/migration-guide#MediaSessionConnector
             if (exoPlayer != null) {
                 val mediaSessionConnector = MediaSession.Builder(context, exoPlayer)
-//                    .setSessionCallback(PlaybackService())
+//                    .setCallback(MyCallback())
                     .build()
-                mediaSessionConnector.setPlayer(exoPlayer)
+                mediaSessionConnector.player = exoPlayer
+
+                this.mediaSession = mediaSessionConnector
+                return mediaSession
             }
-            this.mediaSession = mediaSession
-            return mediaSession
+
+            return null
+
         }
         return null
 
+    }
+
+    private inner class MyCallback : MediaSession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ) : MediaSession.ConnectionResult {
+            val connectionResult = super.onConnect(session, controller)
+            val availableSessionCommands = connectionResult.availableSessionCommands.buildUpon()
+
+            // Configure and return the set of available commands when accepting the connection
+            return MediaSession.ConnectionResult.accept(
+                availableSessionCommands.build(),
+                connectionResult.availablePlayerCommands
+            )
+        }
     }
 
     fun onPictureInPictureStatusChanged(inPip: Boolean) {
